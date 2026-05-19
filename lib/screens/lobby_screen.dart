@@ -1,35 +1,17 @@
+import 'dart:async';
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../providers/auth_provider.dart';
 import 'remote_screen.dart';
 
-// ═══════════════════════════════════════
-// COLOR PALETTE (Battlebot Neon Dark)
-// ═══════════════════════════════════════
-class _C {
-  static const bg = Color(0xFF0A0A0F);
-  static const headerBg = Color(0xFF111118);
-  static const panelBg = Color(0xFF0D0D14);
-  static const panelBorder = Color(0xFF2A2A40);
-  static const navBg = Color(0xFF0E0E18);
-  static const neonBlue = Color(0xFF00C8FF);
-  static const neonRed = Color(0xFFFF3040);
-  static const gold = Color(0xFFFF3D3D);     // rank 1 – red-gold like reference
-  static const silver = Color(0xFFB0BEC5);    // rank 2
-  static const bronze = Color(0xFFE67E22);    // rank 3
-  static const teal = Color(0xFF00E5A0);      // rank 4
-  static const purple = Color(0xFF9C5FFF);    // rank 5
-  static const textPrimary = Colors.white;
-  static const textMuted = Color(0xFF8888AA);
-  static const btnBorder = Color(0xFF4A4A6A);
-  static const btnGlow = Color(0xFF5050A0);
-}
 
 class LobbyScreen extends StatefulWidget {
   const LobbyScreen({super.key});
-
   @override
   State<LobbyScreen> createState() => _LobbyScreenState();
 }
@@ -38,74 +20,599 @@ class _LobbyScreenState extends State<LobbyScreen>
     with TickerProviderStateMixin {
   String _selectedTab = 'GUIDE';
   final int _gems = 79;
-  late AnimationController _pulseCtrl;
-  late Animation<double> _pulseAnim;
-  late AnimationController _floatCtrl;
-  late Animation<double> _floatAnim;
+
+  // Animations
+  late AnimationController _pulseCtrl, _floatCtrl, _bgCtrl;
+  late Animation<double> _pulseAnim, _floatAnim;
+
+  // Realtime: Battery
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.full;
+  Timer? _batteryTimer;
+
+  // Realtime: Connectivity
+  List<ConnectivityResult> _connectivityResult = [ConnectivityResult.wifi];
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Button glow pulse
+    // Animations
     _pulseCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+        vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+        CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
-    // Arena floating (up/down)
     _floatCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    )..repeat(reverse: true);
-    _floatAnim = Tween<double>(begin: -10.0, end: 10.0).animate(
-      CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut),
-    );
+        vsync: this, duration: const Duration(milliseconds: 2800))
+      ..repeat(reverse: true);
+    _floatAnim = Tween<double>(begin: -8.0, end: 8.0).animate(
+        CurvedAnimation(parent: _floatCtrl, curve: Curves.easeInOut));
+
+    _bgCtrl = AnimationController(
+        vsync: this, duration: const Duration(seconds: 15))
+      ..repeat();
+
+    // Init realtime battery
+    _initBattery();
+    // Init realtime connectivity
+    _initConnectivity();
+  }
+
+  Future<void> _initBattery() async {
+    try {
+      _batteryLevel = await _battery.batteryLevel;
+      _batteryState = await _battery.batteryState;
+      if (mounted) setState(() {});
+
+      _battery.onBatteryStateChanged.listen((state) {
+        if (mounted) {
+          setState(() => _batteryState = state);
+          _battery.batteryLevel.then((level) {
+            if (mounted) setState(() => _batteryLevel = level);
+          });
+        }
+      });
+
+      // Poll battery level every 5 seconds to ensure pure real-time updating
+      _batteryTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+        try {
+          final level = await _battery.batteryLevel;
+          final state = await _battery.batteryState;
+          if (mounted) {
+            setState(() {
+              _batteryLevel = level;
+              _batteryState = state;
+            });
+          }
+        } catch (_) {}
+      });
+    } catch (_) {
+      // Web/unsupported platform fallback
+      if (mounted) setState(() => _batteryLevel = -1);
+    }
+  }
+
+  Future<void> _initConnectivity() async {
+    try {
+      _connectivityResult = await Connectivity().checkConnectivity();
+      if (mounted) setState(() {});
+
+      Connectivity().onConnectivityChanged.listen((result) {
+        if (mounted) setState(() => _connectivityResult = result);
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _connectivityResult = [ConnectivityResult.none]);
+      }
+    }
   }
 
   @override
   void dispose() {
     _pulseCtrl.dispose();
     _floatCtrl.dispose();
+    _bgCtrl.dispose();
+    _batteryTimer?.cancel();
     super.dispose();
   }
 
+  // ═══ Helpers untuk battery & connectivity ═══
+  IconData get _batteryIcon {
+    if (_batteryState == BatteryState.charging) return Icons.battery_charging_full;
+    if (_batteryLevel < 0) return Icons.battery_unknown;
+    if (_batteryLevel > 80) return Icons.battery_full;
+    if (_batteryLevel > 60) return Icons.battery_5_bar;
+    if (_batteryLevel > 40) return Icons.battery_4_bar;
+    if (_batteryLevel > 20) return Icons.battery_3_bar;
+    return Icons.battery_1_bar;
+  }
+
+  Color get _batteryColor {
+    return const Color(0xFF4CAF50); // Selalu warna hijau sesuai permintaan user
+  }
+
+  String get _batteryText {
+    if (_batteryLevel < 0) return '??%';
+    return '$_batteryLevel%';
+  }
+
+  IconData get _signalIcon {
+    if (_connectivityResult.contains(ConnectivityResult.wifi)) {
+      return Icons.wifi;
+    } else if (_connectivityResult.contains(ConnectivityResult.mobile)) {
+      return Icons.signal_cellular_alt;
+    } else if (_connectivityResult.contains(ConnectivityResult.ethernet)) {
+      return Icons.lan;
+    } else if (_connectivityResult.contains(ConnectivityResult.none)) {
+      return Icons.signal_wifi_off;
+    }
+    return Icons.signal_cellular_alt;
+  }
+
+  Color get _signalColor {
+    if (_connectivityResult.contains(ConnectivityResult.none)) {
+      return const Color(0xFFFF5252);
+    }
+    return const Color(0xFF4CAF50);
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // BUILD
+  // ═══════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _C.bg,
-      body: Column(
+      body: Stack(
         children: [
-          // ── A. HEADER ──────────────────────────────────────
-          _Header(gems: _gems, onLogout: _showLogoutDialog),
+          // ═══ DYNAMIC MOVING BACKGROUND ═══
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _bgCtrl,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter: AbstractMovingBackgroundPainter(_bgCtrl.value),
+                );
+              },
+            ),
+          ),
 
-          // ── BODY ROW ───────────────────────────────────────
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── B. LEFT NAV ────────────────────────────
-                _LeftNav(
-                  selectedTab: _selectedTab,
-                  onTabSelected: (t) => setState(() => _selectedTab = t),
+          // ═══ MAIN LAYOUT ═══
+          Column(
+            children: [
+              const SizedBox(height: 4),
+              _buildTopBar(),
+              Expanded(
+                child: Row(
+                  children: [
+                    _buildSidebar(),
+                    Expanded(child: _buildCenterArena()),
+                    _buildLeaderboard(),
+                  ],
                 ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-                // ── D. CENTER ARENA ─────────────────────────
-                Expanded(
-                  child: _CenterArena(
-                    pulseAnim: _pulseAnim,
-                    floatAnim: _floatAnim,
-                    onEnterLobby: _enterLobby,
+  // ═══════════════════════════════════════════════════════
+  // TOP BAR
+  // ═══════════════════════════════════════════════════════
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: SizedBox(
+        height: 50,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // ── Profil kiri atas ──
+            Align(
+              alignment: Alignment.centerLeft,
+              child: GestureDetector(
+                onTap: _showLogoutDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 32, height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFF4A148C), Color(0xFF1A237E)]),
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              width: 1.5),
+                        ),
+                        child: const Icon(Icons.person,
+                            color: Colors.white70, size: 20),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('USER_01',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            letterSpacing: 1,
+                          )),
+                    ],
                   ),
                 ),
+              ),
+            ),
 
-                // ── C. LEADERBOARD ──────────────────────────
-                const _LeaderboardPanel(),
-              ],
+            // ── Logo BATTLEBOT INDONESIA (Mathematic Center) ──
+            Align(
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('BATTLEBOT',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 6,
+                        shadows: [
+                          Shadow(
+                              color:
+                                  const Color(0xFF2979FF).withValues(alpha: 0.8),
+                              blurRadius: 12),
+                        ],
+                      )),
+                  Text('INDONESIA',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 8,
+                        shadows: [
+                          Shadow(
+                              color:
+                                  const Color(0xFF2979FF).withValues(alpha: 0.5),
+                              blurRadius: 8),
+                        ],
+                      )),
+                ],
+              ),
+            ),
+
+            // ── Indikator kanan atas (REALTIME) ──
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Diamond + jumlah
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF2979FF).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.diamond,
+                            color: Color(0xFF42A5F5), size: 16),
+                        const SizedBox(width: 4),
+                        Text('$_gems',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Plus button
+                  Container(
+                    width: 24, height: 24,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B5E20).withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color:
+                              const Color(0xFF4CAF50).withValues(alpha: 0.5)),
+                    ),
+                    child: const Icon(Icons.add,
+                        color: Color(0xFF4CAF50), size: 14),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // ═══ SIGNAL (REALTIME via connectivity_plus) ═══
+                  Icon(_signalIcon, color: _signalColor, size: 18),
+                  const SizedBox(width: 6),
+
+                  // ═══ BATTERY (REALTIME via battery_plus) ═══
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: _batteryColor.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(_batteryIcon, color: _batteryColor, size: 14),
+                        const SizedBox(width: 2),
+                        Text(_batteryText,
+                            style: TextStyle(
+                              color: _batteryColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            )),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // SIDEBAR KIRI (transparan, full ke kiri)
+  // ═══════════════════════════════════════════════════════
+  Widget _buildSidebar() {
+    final items = [
+      ('SHOP', Icons.shopping_cart_outlined, 'Shop'),
+      ('INVENTORY', Icons.inventory_2_outlined, 'Inventory'),
+      ('GUIDE', Icons.menu_book_outlined, 'Guide'),
+      ('PENGATURAN', Icons.settings_outlined, 'Pengaturan'),
+    ];
+
+    return Container(
+      width: 80,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.35),
+        border: Border(
+            right: BorderSide(
+                color: Colors.white.withValues(alpha: 0.06))),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: items.map((item) {
+          final isActive = _selectedTab == item.$1;
+          return GestureDetector(
+            onTap: () => setState(() => _selectedTab = item.$1),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 68,
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: isActive
+                        ? const Color(0xFF42A5F5).withValues(alpha: 0.4)
+                        : Colors.transparent),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(item.$2,
+                      color: isActive
+                          ? const Color(0xFF42A5F5)
+                          : Colors.white38,
+                      size: 22),
+                  const SizedBox(height: 4),
+                  Text(item.$3,
+                      style: TextStyle(
+                        color: isActive ? Colors.white : Colors.white38,
+                        fontSize: 9,
+                        fontWeight:
+                            isActive ? FontWeight.bold : FontWeight.normal,
+                      )),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // CENTER ARENA (floating)
+  // ═══════════════════════════════════════════════════════
+  Widget _buildCenterArena() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Arena platform floating
+        Positioned(
+          left: 0, right: 0, top: 0, bottom: 60,
+          child: Align(
+            alignment: const Alignment(0, -0.05),
+            child: AnimatedBuilder(
+              animation: _floatAnim,
+              builder: (_, child) => Transform.translate(
+                  offset: Offset(0, _floatAnim.value), child: child),
+              child: _FloatingArena(pulseAnim: _pulseAnim),
+            ),
+          ),
+        ),
+
+        // MASUK LOBBY button
+        Positioned(
+          bottom: 12, left: 0, right: 0,
+          child: Center(
+            child: GestureDetector(
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const RemoteScreen())),
+              child: AnimatedBuilder(
+                animation: _pulseAnim,
+                builder: (_, __) => Container(
+                  width: 300, height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      const Color(0xFF1A237E).withValues(alpha: 0.8),
+                      const Color(0xFF0D47A1).withValues(alpha: 0.8),
+                      const Color(0xFF1A237E).withValues(alpha: 0.8),
+                    ]),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Color.lerp(const Color(0xFF42A5F5),
+                              Colors.white, _pulseAnim.value * 0.3)!
+                          .withValues(alpha: 0.6),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF2979FF)
+                            .withValues(alpha: _pulseAnim.value * 0.3),
+                        blurRadius: 20,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text('MASUK LOBBY',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 5,
+                          shadows: [
+                            Shadow(
+                                color: const Color(0xFF42A5F5)
+                                    .withValues(alpha: 0.8),
+                                blurRadius: 8),
+                          ],
+                        )),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // LEADERBOARD KANAN (transparan)
+  // ═══════════════════════════════════════════════════════
+  Widget _buildLeaderboard() {
+    final players = [
+      (1, 'NeonStrider'),
+      (2, 'Cipher'),
+      (3, 'VoidWalker'),
+      (4, 'ApexSumo'),
+      (5, 'TitanSmasher'),
+    ];
+
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.only(top: 8, bottom: 8, right: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          // Title
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              border: Border(
+                  bottom: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.08))),
+            ),
+            child: const Text('LEADERBOARD GLOBAL',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                )),
+          ),
+          // Player list
+          Expanded(
+            child: ListView.builder(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+              itemCount: players.length,
+              itemBuilder: (_, i) {
+                final rank = players[i].$1;
+                final name = players[i].$2;
+                final color = _rankColor(rank);
+
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: rank <= 3
+                            ? color.withValues(alpha: 0.2)
+                            : Colors.transparent),
+                  ),
+                  child: Row(
+                    children: [
+                      // Avatar
+                      Container(
+                        width: 28, height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF1A1A2E),
+                          border: Border.all(
+                              color: color.withValues(alpha: 0.3)),
+                        ),
+                        child: const Icon(Icons.person,
+                            color: Colors.white54, size: 16),
+                      ),
+                      const SizedBox(width: 8),
+                      // Name
+                      Expanded(
+                        child: Text(name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            )),
+                      ),
+                      // Rank badge
+                      // TODO: Top 3 → Image.asset('assets/rank_$rank.png')
+                      _buildRankBadge(rank, color),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -113,10 +620,39 @@ class _LobbyScreenState extends State<LobbyScreen>
     );
   }
 
-  void _enterLobby() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const RemoteScreen()),
+  Color _rankColor(int rank) => switch (rank) {
+        1 => const Color(0xFFFFD700),
+        2 => const Color(0xFFB0BEC5),
+        3 => const Color(0xFFE67E22),
+        4 => const Color(0xFF00E5A0),
+        _ => const Color(0xFF9C5FFF),
+      };
+
+  Widget _buildRankBadge(int rank, Color color) {
+    // Placeholder badge — nanti bisa diganti asset gambar
+    return Container(
+      width: 28, height: 28,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.15),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+        boxShadow: rank <= 3
+            ? [
+                BoxShadow(
+                    color: color.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    spreadRadius: 1),
+              ]
+            : null,
+      ),
+      child: Center(
+        child: Text('$rank',
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            )),
+      ),
     );
   }
 
@@ -124,22 +660,23 @@ class _LobbyScreenState extends State<LobbyScreen>
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: _C.panelBg,
+        backgroundColor: const Color(0xFF0D0D20),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: _C.panelBorder),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
         ),
-        title: const Text('Keluar', style: TextStyle(color: _C.neonBlue)),
+        title:
+            const Text('Keluar', style: TextStyle(color: Color(0xFF42A5F5))),
         content: const Text('Apakah Anda ingin keluar?',
-            style: TextStyle(color: _C.textMuted)),
+            style: TextStyle(color: Colors.white54)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: _C.textMuted)),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal',
+                  style: TextStyle(color: Colors.white38))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: _C.neonRed,
+              backgroundColor: const Color(0xFFFF1744),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8)),
@@ -157,365 +694,11 @@ class _LobbyScreenState extends State<LobbyScreen>
 }
 
 // ═══════════════════════════════════════════════════════
-// A. HEADER BAR
+// FLOATING ARENA (PNG transparan via screen blend)
 // ═══════════════════════════════════════════════════════
-class _Header extends StatelessWidget {
-  final int gems;
-  final VoidCallback onLogout;
-
-  const _Header({required this.gems, required this.onLogout});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 54,
-      color: _C.headerBg,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          // Avatar + Username
-          GestureDetector(
-            onTap: onLogout,
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF1E1E2E),
-                    border: Border.all(color: _C.textMuted, width: 1.2),
-                  ),
-                  child: const Icon(Icons.person, color: Colors.white54,
-                      size: 22),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'USER_01',
-                  style: TextStyle(
-                    color: _C.textPrimary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Center Title
-          const Expanded(
-            child: Center(
-              child: Text(
-                'Battlebot Indonesia',
-                style: TextStyle(
-                  color: _C.textMuted,
-                  fontSize: 14,
-                  letterSpacing: 1.5,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-
-          // Gems + status
-          Row(
-            children: [
-              // Gem icon + count
-              const Icon(Icons.diamond, color: _C.neonBlue, size: 18),
-              const SizedBox(width: 6),
-              Text(
-                '$gems',
-                style: const TextStyle(
-                  color: _C.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Plus button
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  border: Border.all(color: _C.panelBorder, width: 1),
-                  borderRadius: BorderRadius.circular(6),
-                  color: const Color(0xFF1A1A28),
-                ),
-                child: const Icon(Icons.add, color: _C.textMuted, size: 14),
-              ),
-              const SizedBox(width: 16),
-              // Signal + Battery
-              const Icon(Icons.signal_cellular_alt,
-                  color: _C.textMuted, size: 18),
-              const SizedBox(width: 8),
-              const Icon(Icons.battery_full, color: _C.textMuted, size: 18),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-// B. LEFT NAVIGATION BAR
-// ═══════════════════════════════════════════════════════
-class _LeftNav extends StatelessWidget {
-  final String selectedTab;
-  final ValueChanged<String> onTabSelected;
-
-  const _LeftNav(
-      {required this.selectedTab, required this.onTabSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      _NavItem(id: 'SHOP', label: 'SHOP', icon: Icons.shopping_cart),
-      _NavItem(id: 'INVENTORY', label: 'INVENTORY', icon: Icons.inventory_2),
-      _NavItem(id: 'GUIDE', label: 'GUIDE', icon: Icons.info_outline),
-      _NavItem(id: 'PENGATURAN', label: 'PENGATURAN', icon: Icons.settings),
-    ];
-
-    return Container(
-      width: 82,
-      color: _C.navBg,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: items.map((item) {
-          final isActive = selectedTab == item.id;
-          return GestureDetector(
-            onTap: () => onTabSelected(item.id),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 74,
-              padding:
-                  const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? _C.neonBlue.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isActive
-                      ? _C.neonBlue.withValues(alpha: 0.4)
-                      : Colors.transparent,
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    item.icon,
-                    color: isActive ? _C.neonBlue : _C.textMuted,
-                    size: 24,
-                  ),
-                  const SizedBox(height: 3),
-                  // FittedBox ensures label never wraps/overflows
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      item.label,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: TextStyle(
-                        color: isActive ? Colors.white : _C.textMuted,
-                        fontSize: 9,
-                        fontWeight: isActive
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _NavItem {
-  final String id, label;
-  final IconData icon;
-  const _NavItem({required this.id, required this.label, required this.icon});
-}
-
-// ═══════════════════════════════════════════════════════
-// D. CENTER ARENA  (floating transparent PNG on background)
-// ═══════════════════════════════════════════════════════
-class _CenterArena extends StatefulWidget {
-  final Animation<double> pulseAnim;
-  final Animation<double> floatAnim;
-  final VoidCallback onEnterLobby;
-
-  const _CenterArena({
-    required this.pulseAnim,
-    required this.floatAnim,
-    required this.onEnterLobby,
-  });
-
-  @override
-  State<_CenterArena> createState() => _CenterArenaState();
-}
-
-class _CenterArenaState extends State<_CenterArena> {
-  bool _btnHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // ── 1. STADIUM BACKGROUND (full bleed) ──────────────
-        Image.asset(
-          'assets/arena_background.png',
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF060610)),
-        ),
-
-        // Dark vignette overlays
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                stops: const [0.0, 0.30, 0.65, 1.0],
-                colors: [
-                  Colors.black.withValues(alpha: 0.92),
-                  Colors.black.withValues(alpha: 0.35),
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: 0.25),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // Left edge blend
-        Positioned(
-          left: 0, top: 0, bottom: 0, width: 55,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-        // Right edge blend
-        Positioned(
-          right: 0, top: 0, bottom: 0, width: 55,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-                colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-
-        // ── 2. FLOATING ARENA PLATFORM ────────────────────────
-        Positioned(
-          left: 0, right: 0,
-          top: 0, bottom: 68,
-          child: Align(
-            // Push arena toward lower center (0 = center, 1.0 = bottom)
-            alignment: const Alignment(0, 0.6),
-            child: AnimatedBuilder(
-              animation: widget.floatAnim,
-              builder: (_, child) => Transform.translate(
-                offset: Offset(0, widget.floatAnim.value),
-                child: child,
-              ),
-              child: _FloatingArena(pulseAnim: widget.pulseAnim),
-            ),
-          ),
-        ),
-
-        // ── 3. MASUK LOBBY BUTTON ────────────────────────────
-        Positioned(
-          bottom: 24, left: 0, right: 0,
-          child: Center(
-            child: MouseRegion(
-              onEnter: (_) => setState(() => _btnHovered = true),
-              onExit: (_) => setState(() => _btnHovered = false),
-              child: GestureDetector(
-                onTap: widget.onEnterLobby,
-                child: AnimatedScale(
-                  scale: _btnHovered ? 1.04 : 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  child: AnimatedBuilder(
-                    animation: widget.pulseAnim,
-                    builder: (_, __) => Container(
-                      width: 320,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D0D20).withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: _btnHovered ? _C.neonBlue : _C.btnBorder,
-                          width: 1.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_btnHovered ? _C.neonBlue : _C.btnGlow)
-                                .withValues(alpha: widget.pulseAnim.value * 0.35),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text(
-                          'MASUK LOBBY',
-                          style: TextStyle(
-                            color: _btnHovered ? _C.neonBlue : Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 4,
-                            shadows: _btnHovered
-                                ? [const Shadow(color: _C.neonBlue, blurRadius: 10)]
-                                : [],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────
-// FLOATING ARENA  (black-bg → transparent via BlendMode.screen)
-// ─────────────────────────────────────────────────────────
-//
-// Cara kerja:
-//   1. Load arena_platform.png sebagai dart:ui.Image (async)
-//   2. CustomPainter memanggil canvas.saveLayer(BlendMode.screen)
-//   3. screen(black,  bg) = bg   → piksel hitam jadi transparan ✓
-//   4. screen(color, bg) = vivid → warna neon makin bersinar   ✓
 class _FloatingArena extends StatefulWidget {
   final Animation<double> pulseAnim;
   const _FloatingArena({required this.pulseAnim});
-
   @override
   State<_FloatingArena> createState() => _FloatingArenaState();
 }
@@ -530,10 +713,9 @@ class _FloatingArenaState extends State<_FloatingArena> {
   }
 
   Future<void> _loadImage() async {
-    final data = await rootBundle.load('assets/arena_platform.png');
-    final codec = await ui.instantiateImageCodec(
-      data.buffer.asUint8List(),
-    );
+    final data = await rootBundle.load('assets/arena_diorama.png');
+    final codec =
+        await ui.instantiateImageCodec(data.buffer.asUint8List());
     final frame = await codec.getNextFrame();
     if (mounted) setState(() => _arenaImage = frame.image);
   }
@@ -544,85 +726,99 @@ class _FloatingArenaState extends State<_FloatingArena> {
       alignment: Alignment.center,
       clipBehavior: Clip.none,
       children: [
-        // ── Glow ellipse shadow beneath the platform ──────────
+        // Glow shadow beneath arena
         AnimatedBuilder(
           animation: widget.pulseAnim,
           builder: (_, __) => Positioned(
-            bottom: -8,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                width: 380,
-                height: 28,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(100),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _C.neonBlue.withValues(
-                          alpha: 0.35 + 0.2 * widget.pulseAnim.value),
-                      blurRadius: 45,
-                      spreadRadius: 14,
-                    ),
-                    BoxShadow(
-                      color: const Color(0xFFFF2050).withValues(
-                          alpha: 0.18 + 0.12 * widget.pulseAnim.value),
-                      blurRadius: 32,
-                      spreadRadius: 6,
-                    ),
-                  ],
-                ),
+            bottom: -10,
+            child: Container(
+              width: 520, height: 24,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(100),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2979FF).withValues(
+                       alpha: 0.3 + 0.2 * widget.pulseAnim.value),
+                    blurRadius: 40,
+                    spreadRadius: 12,
+                  ),
+                  BoxShadow(
+                    color: const Color(0xFFFF1744).withValues(
+                       alpha: 0.15 + 0.1 * widget.pulseAnim.value),
+                    blurRadius: 30,
+                    spreadRadius: 6,
+                  ),
+                ],
               ),
             ),
           ),
         ),
-
-        // ── Arena platform (black bg → transparent via screen blend) ─
+        // Arena image (normal drawing, no screen blend to prevent background from covering it)
         if (_arenaImage != null)
-          SizedBox(
-            width: 520,
-            height: 360,
-            child: CustomPaint(
-              painter: _ScreenBlendPainter(image: _arenaImage!),
+          OverflowBox(
+            minWidth: 780,
+            maxWidth: 780,
+            minHeight: 500,
+            maxHeight: 500,
+            child: SizedBox(
+              width: 780, height: 500,
+              child: CustomPaint(
+                  painter: _ScreenBlendPainter(image: _arenaImage!)),
             ),
           )
         else
-          // Placeholder while image is loading
-          const SizedBox(width: 520, height: 360),
+          const OverflowBox(
+            minWidth: 780,
+            maxWidth: 780,
+            minHeight: 500,
+            maxHeight: 500,
+            child: SizedBox(width: 780, height: 500),
+          ),
       ],
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// Painter: draws image with canvas.saveLayer(BlendMode.screen)
-//   → composites the entire image layer onto what's behind
-//     using screen blend → black pixels disappear
-// ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// ARENA PAINTER (normal drawing - maintains transparency)
+// ═══════════════════════════════════════════════════════
 class _ScreenBlendPainter extends CustomPainter {
   final ui.Image image;
   const _ScreenBlendPainter({required this.image});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // saveLayer composites everything drawn inside it
-    // onto the destination using the specified blend mode.
-    // BlendMode.screen formula:  result = src + dst - src*dst
-    //   src = black (0,0,0)  → result = 0 + dst - 0 = dst  (bg shows) ✓
-    //   src = white (1,1,1)  → result = 1                              ✓
-    //   src = neon color     → result brightened / vivid               ✓
-    canvas.saveLayer(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..blendMode = BlendMode.screen,
-    );
+    final double srcWidth = image.width.toDouble();
+    final double srcHeight = image.height.toDouble();
+    
+    // Hitung aspect ratio agar TIDAK GEPENG
+    final double srcAspect = srcWidth / srcHeight;
+    final double dstAspect = size.width / size.height;
+    
+    double drawWidth;
+    double drawHeight;
+    
+    if (srcAspect > dstAspect) {
+      // Gambar lebih lebar dibanding container, batasi lebar
+      drawWidth = size.width;
+      drawHeight = size.width / srcAspect;
+    } else {
+      // Gambar lebih tinggi dibanding container, batasi tinggi
+      drawHeight = size.height;
+      drawWidth = size.height * srcAspect;
+    }
+    
+    // Posisikan gambar di tengah container
+    final double dx = (size.width - drawWidth) / 2;
+    final double dy = (size.height - drawHeight) / 2;
+    final Rect destRect = Rect.fromLTWH(dx, dy, drawWidth, drawHeight);
+
     canvas.drawImageRect(
       image,
-      Rect.fromLTWH(
-          0, 0, image.width.toDouble(), image.height.toDouble()),
-      Rect.fromLTWH(0, 0, size.width, size.height),
+      Rect.fromLTWH(0, 0, srcWidth, srcHeight),
+      destRect,
       Paint(),
     );
-    canvas.restore();
   }
 
   @override
@@ -630,216 +826,69 @@ class _ScreenBlendPainter extends CustomPainter {
       old.image != image;
 }
 
-
 // ═══════════════════════════════════════════════════════
-
-// C. LEADERBOARD PANEL (Right Sidebar)
+// ABSTRACT MOVING BACKGROUND PAINTER
 // ═══════════════════════════════════════════════════════
-class _LeaderboardPanel extends StatelessWidget {
-  const _LeaderboardPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    final players = [
-      _Player(rank: 1, name: 'NeonStrider'),
-      _Player(rank: 2, name: 'Cipher'),
-      _Player(rank: 3, name: 'VoidWalker'),
-      _Player(rank: 4, name: 'ApexSumo'),
-      _Player(rank: 5, name: 'TitanSmasher'),
-    ];
-
-    return Container(
-      width: 240,
-      color: _C.panelBg,
-      child: Column(
-        children: [
-          // Title Bar
-          Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: _C.panelBorder, width: 1),
-              ),
-            ),
-            child: const Text(
-              'LEADERBOARD GLOBAL',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.8,
-              ),
-            ),
-          ),
-
-          // Player rows
-          Expanded(
-            child: ListView.separated(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-              itemCount: players.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 4),
-              itemBuilder: (_, i) => _PlayerRow(player: players[i]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Player {
-  final int rank;
-  final String name;
-  const _Player({required this.rank, required this.name});
-}
-
-class _PlayerRow extends StatelessWidget {
-  final _Player player;
-  const _PlayerRow({required this.player});
-
-  static const _rankColors = {
-    1: _C.gold,
-    2: _C.silver,
-    3: _C.bronze,
-    4: _C.teal,
-    5: _C.purple,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final rankColor = _rankColors[player.rank] ?? Colors.white;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111120),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: rankColor.withValues(alpha: 0.15),
-          width: 0.8,
-        ),
-      ),
-      child: Row(
-        children: [
-          // Rank number (colored)
-          SizedBox(
-            width: 20,
-            child: Text(
-              '${player.rank}',
-              style: TextStyle(
-                color: rankColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          // Avatar circle
-          Container(
-            width: 28,
-            height: 28,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFF1A1A2E),
-            ),
-            child: const Icon(Icons.person, color: Colors.white54, size: 18),
-          ),
-          const SizedBox(width: 10),
-
-          // Name
-          Expanded(
-            child: Text(
-              player.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-
-          // Shield badge with rank number
-          _ShieldBadge(rank: player.rank, color: rankColor),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-// SHIELD BADGE WIDGET
-// ═══════════════════════════════════════════════════════
-class _ShieldBadge extends StatelessWidget {
-  final int rank;
-  final Color color;
-
-  const _ShieldBadge({required this.rank, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 34,
-      height: 34,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Shield shape via custom paint
-          CustomPaint(
-            size: const Size(34, 34),
-            painter: _ShieldPainter(color: color),
-          ),
-          // Rank number inside shield
-          Text(
-            '$rank',
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ShieldPainter extends CustomPainter {
-  final Color color;
-  const _ShieldPainter({required this.color});
+class AbstractMovingBackgroundPainter extends CustomPainter {
+  final double animationValue;
+  AbstractMovingBackgroundPainter(this.animationValue);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final borderPaint = Paint()
-      ..color = color.withValues(alpha: 0.6)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
+    // 1. Draw solid dark base
+    final basePaint = Paint()..color = const Color(0xFF070010);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), basePaint);
 
-    final fillPaint = Paint()
-      ..color = color.withValues(alpha: 0.12)
-      ..style = PaintingStyle.fill;
+    final double w = size.width;
+    final double h = size.height;
 
-    // Simple shield path
-    final path = Path();
-    final w = size.width;
-    final h = size.height;
+    // Blob 1: Vibrant Red on the left-ish side
+    final double x1 = w * 0.25 + math.sin(animationValue * 2 * math.pi) * w * 0.15;
+    final double y1 = h * 0.4 + math.cos(animationValue * 2 * math.pi) * h * 0.2;
+    final double r1 = math.min(w, h) * 0.45 + math.sin(animationValue * 2 * math.pi) * 40;
 
-    path.moveTo(w * 0.5, h * 0.05);
-    path.lineTo(w * 0.95, h * 0.22);
-    path.lineTo(w * 0.95, h * 0.55);
-    path.quadraticBezierTo(w * 0.95, h * 0.82, w * 0.5, h * 0.97);
-    path.quadraticBezierTo(w * 0.05, h * 0.82, w * 0.05, h * 0.55);
-    path.lineTo(w * 0.05, h * 0.22);
-    path.close();
+    final paintRed = Paint()
+      ..color = const Color(0xFFFF1744).withValues(alpha: 0.35)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 130);
 
-    canvas.drawPath(path, fillPaint);
-    canvas.drawPath(path, borderPaint);
+    canvas.drawCircle(Offset(x1, y1), r1, paintRed);
+
+    // Blob 2: Vibrant Blue on the right-ish side
+    final double x2 = w * 0.75 + math.cos(animationValue * 2 * math.pi) * w * 0.15;
+    final double y2 = h * 0.5 + math.sin(animationValue * 2 * math.pi) * h * 0.2;
+    final double r2 = math.min(w, h) * 0.45 + math.cos(animationValue * 2 * math.pi) * 40;
+
+    final paintBlue = Paint()
+      ..color = const Color(0xFF00E5FF).withValues(alpha: 0.28)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 140);
+
+    canvas.drawCircle(Offset(x2, y2), r2, paintBlue);
+
+    // Blob 3: Deep Royal Blue in the center-right
+    final double x3 = w * 0.6 + math.sin(animationValue * 2 * math.pi + 1.0) * w * 0.2;
+    final double y3 = h * 0.3 + math.cos(animationValue * 2 * math.pi + 1.0) * h * 0.15;
+    final double r3 = math.min(w, h) * 0.5 + math.sin(animationValue * 2 * math.pi + 1.0) * 30;
+
+    final paintRoyal = Paint()
+      ..color = const Color(0xFF2979FF).withValues(alpha: 0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 150);
+
+    canvas.drawCircle(Offset(x3, y3), r3, paintRoyal);
+
+    // Blob 4: Deep Crimson Red in the center-left
+    final double x4 = w * 0.4 + math.cos(animationValue * 2 * math.pi + 2.0) * w * 0.2;
+    final double y4 = h * 0.7 + math.sin(animationValue * 2 * math.pi + 2.0) * h * 0.15;
+    final double r4 = math.min(w, h) * 0.45 + math.cos(animationValue * 2 * math.pi + 2.0) * 30;
+
+    final paintCrimson = Paint()
+      ..color = const Color(0xFFD50000).withValues(alpha: 0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
+
+    canvas.drawCircle(Offset(x4, y4), r4, paintCrimson);
   }
 
   @override
-  bool shouldRepaint(covariant _ShieldPainter old) => old.color != color;
+  bool shouldRepaint(covariant AbstractMovingBackgroundPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
+  }
 }
