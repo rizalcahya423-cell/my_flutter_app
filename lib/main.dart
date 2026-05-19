@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/control_provider.dart';
 import 'screens/login_screen.dart';
-import 'screens/remote_screen.dart';
+import 'screens/lobby_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,8 +17,10 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Enable persistence to handle offline/slow connection better
-  FirebaseDatabase.instance.setPersistenceEnabled(true);
+  // Enable persistence to handle offline/slow connection better on mobile
+  if (!kIsWeb) {
+    FirebaseDatabase.instance.setPersistenceEnabled(true);
+  }
 
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
@@ -44,7 +48,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFF070B19),
         useMaterial3: true,
       ),
       home: const AuthWrapper(),
@@ -59,9 +63,9 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     
-    // Switch between Login and Remote based on Auth state
+    // Switch between Login and Lobby based on Auth state
     if (authProvider.isAuthenticated) {
-      return const RemoteScreen();
+      return const LobbyScreen();
     } else {
       return const LoginScreen();
     }

@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -28,15 +25,9 @@ class DefaultFirebaseOptions {
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -68,4 +59,36 @@ class DefaultFirebaseOptions {
     iosClientId: '808088559452-m2fvcimgpvsvc2lv5rrntrrrcqntm5lb.apps.googleusercontent.com',
     iosBundleId: 'com.example.myFlutterApp',
   );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyCd3cz1cPLqd9pDAe-qwutF7R-PdVhEl7M',
+    appId: '1:808088559452:web:db41a0cb002a936f5beb99',
+    messagingSenderId: '808088559452',
+    projectId: 'rc-firebase-e7c09',
+    authDomain: 'rc-firebase-e7c09.firebaseapp.com',
+    databaseURL: 'https://rc-firebase-e7c09-default-rtdb.firebaseio.com',
+    storageBucket: 'rc-firebase-e7c09.firebasestorage.app',
+  );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyBlqwq7hzQof1vFDIgyvcvlWZb_g1FsIec',
+    appId: '1:808088559452:ios:e52b27f7cf969e7f5beb99',
+    messagingSenderId: '808088559452',
+    projectId: 'rc-firebase-e7c09',
+    databaseURL: 'https://rc-firebase-e7c09-default-rtdb.firebaseio.com',
+    storageBucket: 'rc-firebase-e7c09.firebasestorage.app',
+    iosClientId: '808088559452-m2fvcimgpvsvc2lv5rrntrrrcqntm5lb.apps.googleusercontent.com',
+    iosBundleId: 'com.example.myFlutterApp',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCmlZ4m23eRdTpKTn8CdNytItUjsh9qNRA',
+    appId: '1:808088559452:web:3e2a45b2b3b1b52d5beb99',
+    messagingSenderId: '808088559452',
+    projectId: 'rc-firebase-e7c09',
+    authDomain: 'rc-firebase-e7c09.firebaseapp.com',
+    databaseURL: 'https://rc-firebase-e7c09-default-rtdb.firebaseio.com',
+    storageBucket: 'rc-firebase-e7c09.firebasestorage.app',
+  );
+
 }
