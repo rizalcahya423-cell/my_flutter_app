@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 
 class ControlButton extends StatefulWidget {
   final IconData icon;
+  final Color color;
   final VoidCallback onTapDown;
   final VoidCallback onTapUp;
+  final double size;
 
   const ControlButton({
     super.key,
     required this.icon,
+    this.color = Colors.cyanAccent,
     required this.onTapDown,
     required this.onTapUp,
+    this.size = 100,
   });
 
   @override
@@ -39,23 +43,25 @@ class _ControlButtonState extends State<ControlButton> {
         duration: const Duration(milliseconds: 100),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
-          width: 100,
-          height: 100,
+          width: widget.size,
+          height: widget.size,
           decoration: BoxDecoration(
-            color: _isPressed ? const Color(0xFF333333) : const Color(0xFF222222),
+            color: _isPressed
+                ? const Color(0xFF333333)
+                : const Color(0xFF222222),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: _isPressed 
-                  ? Colors.cyanAccent.withOpacity(0.3) 
-                  : Colors.black.withOpacity(0.5),
+                color: _isPressed
+                    ? widget.color.withValues(alpha: 0.3)
+                    : Colors.black.withValues(alpha: 0.5),
                 offset: _isPressed ? const Offset(0, 0) : const Offset(4, 4),
                 blurRadius: _isPressed ? 15 : 10,
                 spreadRadius: _isPressed ? 2 : 0,
               ),
               if (!_isPressed)
                 BoxShadow(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   offset: const Offset(-4, -4),
                   blurRadius: 10,
                 ),
@@ -63,20 +69,24 @@ class _ControlButtonState extends State<ControlButton> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: _isPressed 
-                ? [const Color(0xFF3A3A3A), const Color(0xFF2A2A2A)]
-                : [const Color(0xFF2A2A2A), const Color(0xFF1A1A1A)],
+              colors: _isPressed
+                  ? [const Color(0xFF3A3A3A), const Color(0xFF2A2A2A)]
+                  : [const Color(0xFF2A2A2A), const Color(0xFF1A1A1A)],
             ),
             border: Border.all(
-              color: _isPressed ? Colors.cyanAccent : Colors.cyanAccent.withOpacity(0.1),
+              color: _isPressed
+                  ? widget.color
+                  : widget.color.withValues(alpha: 0.1),
               width: 2,
             ),
           ),
           child: Center(
             child: Icon(
               widget.icon,
-              size: 50,
-              color: _isPressed ? Colors.cyanAccent : Colors.cyanAccent.withOpacity(0.9),
+              size: widget.size * 0.5,
+              color: _isPressed
+                  ? widget.color
+                  : widget.color.withValues(alpha: 0.9),
             ),
           ),
         ),

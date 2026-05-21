@@ -56,7 +56,8 @@ class DefaultFirebaseOptions {
     projectId: 'rc-firebase-e7c09',
     databaseURL: 'https://rc-firebase-e7c09-default-rtdb.firebaseio.com',
     storageBucket: 'rc-firebase-e7c09.firebasestorage.app',
-    iosClientId: '808088559452-m2fvcimgpvsvc2lv5rrntrrrcqntm5lb.apps.googleusercontent.com',
+    iosClientId:
+        '808088559452-m2fvcimgpvsvc2lv5rrntrrrcqntm5lb.apps.googleusercontent.com',
     iosBundleId: 'com.example.myFlutterApp',
   );
 
@@ -77,7 +78,8 @@ class DefaultFirebaseOptions {
     projectId: 'rc-firebase-e7c09',
     databaseURL: 'https://rc-firebase-e7c09-default-rtdb.firebaseio.com',
     storageBucket: 'rc-firebase-e7c09.firebasestorage.app',
-    iosClientId: '808088559452-m2fvcimgpvsvc2lv5rrntrrrcqntm5lb.apps.googleusercontent.com',
+    iosClientId:
+        '808088559452-m2fvcimgpvsvc2lv5rrntrrrcqntm5lb.apps.googleusercontent.com',
     iosBundleId: 'com.example.myFlutterApp',
   );
 
@@ -90,5 +92,4 @@ class DefaultFirebaseOptions {
     databaseURL: 'https://rc-firebase-e7c09-default-rtdb.firebaseio.com',
     storageBucket: 'rc-firebase-e7c09.firebasestorage.app',
   );
-
 }

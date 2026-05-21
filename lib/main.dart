@@ -12,10 +12,8 @@ import 'screens/lobby_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Enable persistence to handle offline/slow connection better on mobile
   if (!kIsWeb) {
@@ -44,7 +42,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RC Controller Pro',
+      title: 'Battlebot Indonesia',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -62,7 +60,7 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    
+
     // Switch between Login and Lobby based on Auth state
     if (authProvider.isAuthenticated) {
       return const LobbyScreen();

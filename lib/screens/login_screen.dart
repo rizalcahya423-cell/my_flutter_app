@@ -17,12 +17,18 @@ class _LoginScreenState extends State<LoginScreen> {
   void _submit() async {
     setState(() => _isLoading = true);
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    
+
     // Simple logic: Try to sign in, if fails, try to sign up
-    String? error = await auth.signIn(_emailController.text, _passwordController.text);
-    
+    String? error = await auth.signIn(
+      _emailController.text,
+      _passwordController.text,
+    );
+
     if (error != null && error.contains('user-not-found')) {
-      error = await auth.signUp(_emailController.text, _passwordController.text);
+      error = await auth.signUp(
+        _emailController.text,
+        _passwordController.text,
+      );
     }
 
     if (error != null && mounted) {
@@ -50,7 +56,11 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.settings_remote, size: 80, color: Colors.cyanAccent),
+                const Icon(
+                  Icons.settings_remote,
+                  size: 80,
+                  color: Colors.cyanAccent,
+                ),
                 const SizedBox(height: 20),
                 const Text(
                   'RC LOGIN',
@@ -64,7 +74,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 40),
                 _buildTextField(_emailController, 'Email', Icons.email, false),
                 const SizedBox(height: 16),
-                _buildTextField(_passwordController, 'Password', Icons.lock, true),
+                _buildTextField(
+                  _passwordController,
+                  'Password',
+                  Icons.lock,
+                  true,
+                ),
                 const SizedBox(height: 32),
                 SizedBox(
                   width: double.infinity,
@@ -74,11 +89,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.cyanAccent,
                       foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    child: _isLoading 
-                      ? const CircularProgressIndicator(color: Colors.black)
-                      : const Text('LOGIN / REGISTER', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.black)
+                        : const Text(
+                            'LOGIN / REGISTER',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
               ],
@@ -89,7 +109,12 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, IconData icon, bool isPassword) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon,
+    bool isPassword,
+  ) {
     return TextField(
       controller: controller,
       obscureText: isPassword,
@@ -107,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
           borderSide: const BorderSide(color: Colors.cyanAccent),
         ),
         filled: true,
-        fillColor: Colors.white.withOpacity(0.05),
+        fillColor: Colors.white.withValues(alpha: 0.05),
       ),
     );
   }

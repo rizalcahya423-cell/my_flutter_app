@@ -40,6 +40,9 @@ dependencies:
   provider: ^6.1.5+1
   battery_plus: ^7.0.0
   connectivity_plus: ^7.1.1
+  shared_preferences: ^2.5.3
+  agora_rtc_engine: ^6.3.2
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +69,14 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/arena_diorama.png
+    - assets/avatar1.png
+    - assets/avatar2.png
+    - assets/avatar3.png
+    - assets/avatar4.png
+    - assets/avatar5.png
+    - assets/avatar6.png
+    - assets/frame1.png
+    - assets/frame2.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

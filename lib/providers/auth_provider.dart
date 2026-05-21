@@ -26,7 +26,10 @@ class AuthProvider with ChangeNotifier {
 
   Future<String?> signUp(String email, String password) async {
     try {
-      await _auth.createUserWithEmailAndPassword(email: email, password: password);
+      await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message;
